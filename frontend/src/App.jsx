@@ -5,11 +5,17 @@ import useAuthStore from './store/authStore';
 // Pages
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
+import CollaborativeDashboard from './pages/CollaborativeDashboard';
 import Goals from './pages/Goals';
 import Papers from './pages/Papers';
 import Tasks from './pages/Tasks';
 import Profile from './pages/Profile';
+
+// Supervisor Pages
+import SupervisorDashboard from './pages/SupervisorDashboard';
+import SupervisorStudents from './pages/SupervisorStudents';
+import StudentDetail from './pages/StudentDetail';
+import PersonalTodos from './pages/PersonalTodos';
 
 // Layout
 import Layout from './components/Layout';
@@ -18,6 +24,21 @@ import Layout from './components/Layout';
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useAuthStore();
   return isAuthenticated ? children : <Navigate to="/login" />;
+};
+
+// Supervisor Route Component (Professor or Admin only)
+const SupervisorRoute = ({ children }) => {
+  const { user, isAuthenticated } = useAuthStore();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
+
+  if (user?.role !== 'professor' && user?.role !== 'admin') {
+    return <Navigate to="/" />;
+  }
+
+  return children;
 };
 
 function App() {
@@ -46,11 +67,33 @@ function App() {
             <Layout />
           </ProtectedRoute>
         }>
-          <Route index element={<Dashboard />} />
+          <Route index element={<CollaborativeDashboard />} />
           <Route path="goals" element={<Goals />} />
           <Route path="papers" element={<Papers />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="profile" element={<Profile />} />
+
+          {/* Supervisor Routes */}
+          <Route path="supervisor/dashboard" element={
+            <SupervisorRoute>
+              <SupervisorDashboard />
+            </SupervisorRoute>
+          } />
+          <Route path="supervisor/students" element={
+            <SupervisorRoute>
+              <SupervisorStudents />
+            </SupervisorRoute>
+          } />
+          <Route path="supervisor/students/:id" element={
+            <SupervisorRoute>
+              <StudentDetail />
+            </SupervisorRoute>
+          } />
+          <Route path="supervisor/todos" element={
+            <SupervisorRoute>
+              <PersonalTodos />
+            </SupervisorRoute>
+          } />
         </Route>
       </Routes>
     </BrowserRouter>

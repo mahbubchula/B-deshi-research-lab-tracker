@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react';
-import { Plus, FileText, X, Users, Calendar, ExternalLink } from 'lucide-react';
-import { paperAPI } from '../services/api';
+import { Plus, FileText, X, Users, Calendar, ExternalLink, Edit2, Trash2 } from 'lucide-react';
+import { paperAPI, userAPI } from '../services/api';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import useAuthStore from '../store/authStore';
+import UserSelector from '../components/UserSelector';
 
 export default function Papers() {
   const { user } = useAuthStore();
   const [papers, setPapers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingPaper, setEditingPaper] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [allUsers, setAllUsers] = useState([]);
   const [formData, setFormData] = useState({
     title: '',
     abstract: '',
@@ -23,12 +26,23 @@ export default function Papers() {
     authors: [{
       name: user?.name || '',
       role: 'lead'
-    }]
+    }],
+    selectedAuthorIds: []
   });
 
   useEffect(() => {
     fetchPapers();
+    fetchUsers();
   }, [filter]);
+
+  const fetchUsers = async () => {
+    try {
+      const response = await userAPI.getAll();
+      setAllUsers(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+    }
+  };
 
   const fetchPapers = async () => {
     try {
@@ -58,17 +72,79 @@ export default function Papers() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Build authors array from selected user IDs with names
+      const authorsFromSelection = formData.selectedAuthorIds.map(userId => {
+        const selectedUser = allUsers.find(u => u._id === userId);
+        return {
+          user: userId,
+          name: selectedUser?.name || 'Unknown',
+          role: 'co-author'
+        };
+      }).filter(author => author.name !== 'Unknown');
+
       const submitData = {
         ...formData,
-        keywords: formData.keywords.split(',').map(k => k.trim()).filter(Boolean)
+        keywords: typeof formData.keywords === 'string'
+          ? formData.keywords.split(',').map(k => k.trim()).filter(Boolean)
+          : formData.keywords,
+        // Combine current user as lead + selected co-authors
+        authors: [
+          { user: user._id, name: user.name, role: 'lead' },
+          ...authorsFromSelection
+        ]
       };
-      await paperAPI.create(submitData);
-      toast.success('Paper created successfully!');
+
+      // Remove selectedAuthorIds from submitData
+      delete submitData.selectedAuthorIds;
+
+      if (editingPaper) {
+        await paperAPI.update(editingPaper._id, submitData);
+        toast.success('Paper updated successfully!');
+      } else {
+        await paperAPI.create(submitData);
+        toast.success('Paper created successfully!');
+      }
       setShowModal(false);
+      setEditingPaper(null);
       resetForm();
       fetchPapers();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to create paper');
+      toast.error(error.response?.data?.message || 'Operation failed');
+    }
+  };
+
+  const handleEdit = (paper) => {
+    setEditingPaper(paper);
+    // Extract co-author IDs (exclude current user)
+    const coAuthorIds = (paper.authors || [])
+      .filter(a => a.user?._id !== user?.id && a.role !== 'lead')
+      .map(a => a.user?._id || a.user)
+      .filter(Boolean);
+
+    setFormData({
+      title: paper.title,
+      abstract: paper.abstract || '',
+      status: paper.status,
+      venue: {
+        name: paper.venue?.name || '',
+        type: paper.venue?.type || 'conference'
+      },
+      keywords: Array.isArray(paper.keywords) ? paper.keywords.join(', ') : '',
+      authors: paper.authors || [{ name: user?.name || '', role: 'lead' }],
+      selectedAuthorIds: coAuthorIds
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this paper?')) return;
+    
+    try {
+      await paperAPI.delete(id);
+      toast.success('Paper deleted successfully!');
+      fetchPapers();
+    } catch (error) {
+      toast.error('Failed to delete paper');
     }
   };
 
@@ -79,8 +155,15 @@ export default function Papers() {
       status: 'in-progress',
       venue: { name: '', type: 'conference' },
       keywords: '',
-      authors: [{ name: user?.name || '', role: 'lead' }]
+      authors: [{ name: user?.name || '', role: 'lead' }],
+      selectedAuthorIds: []
     });
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingPaper(null);
+    resetForm();
   };
 
   const statusColors = {
@@ -107,10 +190,10 @@ export default function Papers() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-dark-900">Research Papers</h1>
-          <p className="text-dark-600 mt-1">Track your publications and submissions</p>
+          <h1 className="text-3xl font-bold text-dark-900">Team Research Papers</h1>
+          <p className="text-dark-600 mt-1">📚 Collaborative view - See all team members' publications</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn btn-primary">
+        <button onClick={() => { setEditingPaper(null); setShowModal(true); }} className="btn btn-primary">
           <Plus className="w-5 h-5" />
           New Paper
         </button>
@@ -155,7 +238,9 @@ export default function Papers() {
                     {paper.authors && paper.authors.length > 0 && (
                       <div className="flex items-center gap-2">
                         <Users className="w-4 h-4" />
-                        <span>{paper.authors.length} author{paper.authors.length > 1 ? 's' : ''}</span>
+                        <span>
+                          {paper.authors.map(a => a.user?.name || a.name).join(', ')}
+                        </span>
                       </div>
                     )}
                     
@@ -184,6 +269,27 @@ export default function Papers() {
                     </div>
                   )}
                 </div>
+
+                {/* Action Buttons - only show if user is an author or supervisor */}
+                {(paper.authors?.some(a => a.user?._id === user?.id || a.user === user?.id) ||
+                  ['professor', 'admin'].includes(user?.role)) && (
+                  <div className="flex gap-2 ml-4">
+                    <button
+                      onClick={() => handleEdit(paper)}
+                      className="btn btn-ghost p-2 text-blue-600 hover:bg-blue-50"
+                      title="Edit"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(paper._id)}
+                      className="btn btn-ghost p-2 text-red-600 hover:bg-red-50"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))
@@ -196,13 +302,15 @@ export default function Papers() {
         )}
       </div>
 
-      {/* Create Paper Modal */}
+      {/* Create/Edit Paper Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-dark-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-dark-900">Add New Paper</h2>
-              <button onClick={() => { setShowModal(false); resetForm(); }} className="btn btn-ghost p-2">
+              <h2 className="text-2xl font-bold text-dark-900">
+                {editingPaper ? 'Edit Paper' : 'Add New Paper'}
+              </h2>
+              <button onClick={handleCloseModal} className="btn btn-ghost p-2">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -310,15 +418,27 @@ export default function Papers() {
                 <p className="text-xs text-dark-500 mt-1">Separate keywords with commas</p>
               </div>
 
+              {/* Co-Authors - Only for Supervisors */}
+              {['professor', 'admin'].includes(user?.role) && (
+                <div className="border-t border-dark-200 pt-5">
+                  <UserSelector
+                    selectedUsers={formData.selectedAuthorIds}
+                    onChange={(users) => setFormData(prev => ({ ...prev, selectedAuthorIds: users }))}
+                    multiple={true}
+                    label="Add Co-Authors (Students)"
+                  />
+                </div>
+              )}
+
               {/* Buttons */}
               <div className="flex gap-3 pt-4">
                 <button type="submit" className="btn btn-primary flex-1">
                   <FileText className="w-5 h-5" />
-                  Add Paper
+                  {editingPaper ? 'Update Paper' : 'Add Paper'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowModal(false); resetForm(); }}
+                  onClick={handleCloseModal}
                   className="btn btn-secondary"
                 >
                   Cancel

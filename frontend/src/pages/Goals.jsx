@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Plus, Target, Calendar, TrendingUp, X } from 'lucide-react';
+import { Plus, Target, Calendar, TrendingUp, X, Edit2, Trash2, User, Users } from 'lucide-react';
 import { goalAPI } from '../services/api';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import useAuthStore from '../store/authStore';
+import UserSelector from '../components/UserSelector';
 
 export default function Goals() {
+  const { user: currentUser } = useAuthStore();
   const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
+  const [editingGoal, setEditingGoal] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -17,7 +21,8 @@ export default function Goals() {
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     progress: 0,
-    status: 'not-started'
+    status: 'not-started',
+    assignedTo: []
   });
 
   useEffect(() => {
@@ -44,23 +49,68 @@ export default function Goals() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await goalAPI.create(formData);
-      toast.success('Goal created successfully!');
+      if (editingGoal) {
+        await goalAPI.update(editingGoal._id, formData);
+        toast.success('Goal updated successfully!');
+      } else {
+        await goalAPI.create(formData);
+        toast.success('Goal created successfully!');
+      }
       setShowModal(false);
-      setFormData({
-        title: '',
-        description: '',
-        type: 'daily',
-        priority: 'medium',
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0],
-        progress: 0,
-        status: 'not-started'
-      });
+      setEditingGoal(null);
+      resetForm();
       fetchGoals();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to create goal');
+      toast.error(error.response?.data?.message || 'Operation failed');
     }
+  };
+
+  const handleEdit = (goal) => {
+    setEditingGoal(goal);
+    setFormData({
+      title: goal.title,
+      description: goal.description || '',
+      type: goal.type,
+      priority: goal.priority,
+      startDate: goal.startDate.split('T')[0],
+      endDate: goal.endDate.split('T')[0],
+      progress: goal.progress,
+      status: goal.status,
+      assignedTo: goal.assignedTo?.map(u => u._id || u) || []
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this goal?')) return;
+    
+    try {
+      await goalAPI.delete(id);
+      toast.success('Goal deleted successfully!');
+      fetchGoals();
+    } catch (error) {
+      toast.error('Failed to delete goal');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      description: '',
+      type: 'daily',
+      priority: 'medium',
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: new Date().toISOString().split('T')[0],
+      progress: 0,
+      status: 'not-started',
+      assignedTo: []
+    });
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingGoal(null);
+    resetForm();
   };
 
   const statusColors = {
@@ -74,10 +124,10 @@ export default function Goals() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-dark-900">Goals</h1>
-          <p className="text-dark-600 mt-1">Track your daily, weekly, and monthly objectives</p>
+          <h1 className="text-3xl font-bold text-dark-900">Team Goals</h1>
+          <p className="text-dark-600 mt-1">📊 Collaborative view - See all team members' goals</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn btn-primary">
+        <button onClick={() => { setEditingGoal(null); setShowModal(true); }} className="btn btn-primary">
           <Plus className="w-5 h-5" />
           New Goal
         </button>
@@ -99,7 +149,9 @@ export default function Goals() {
       {/* Goals List */}
       <div className="grid gap-4">
         {loading ? (
-          <div className="text-center py-12">Loading...</div>
+          <div className="text-center py-12">
+            <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          </div>
         ) : goals.length > 0 ? (
           goals.map((goal) => (
             <div key={goal._id} className="card p-6 hover:shadow-lg transition-all">
@@ -108,12 +160,56 @@ export default function Goals() {
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="text-lg font-semibold text-dark-900">{goal.title}</h3>
                     <span className={`badge capitalize ${statusColors[goal.status]}`}>
-                      {goal.status}
+                      {goal.status.replace('-', ' ')}
                     </span>
                     <span className="badge badge-info capitalize">{goal.type}</span>
                   </div>
-                  {goal.description && <p className="text-dark-600 text-sm">{goal.description}</p>}
+                  {goal.description && <p className="text-dark-600 text-sm mb-2">{goal.description}</p>}
+
+                  {/* Show who created the goal and assignment info */}
+                  <div className="flex flex-wrap items-center gap-4 text-xs text-dark-500">
+                    <div className="flex items-center gap-2">
+                      <User className="w-3 h-3" />
+                      <span>Created by: <span className="font-medium text-dark-700">{goal.user?.name || 'Unknown'}</span></span>
+                    </div>
+
+                    {goal.assignedTo && goal.assignedTo.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <Users className="w-3 h-3" />
+                        <span>Assigned to: <span className="font-medium text-dark-700">
+                          {goal.assignedTo.map(u => u.name).join(', ')}
+                        </span></span>
+                      </div>
+                    )}
+
+                    {goal.assignedBy && (
+                      <div className="flex items-center gap-2">
+                        <User className="w-3 h-3" />
+                        <span>Assigned by: <span className="font-medium text-dark-700">{goal.assignedBy.name}</span></span>
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {/* Action Buttons - only show if it's the user's own goal or if they're a supervisor */}
+                {(goal.user?._id === currentUser?.id || ['professor', 'admin'].includes(currentUser?.role)) && (
+                  <div className="flex gap-2 ml-4">
+                    <button
+                      onClick={() => handleEdit(goal)}
+                      className="btn btn-ghost p-2 text-blue-600 hover:bg-blue-50"
+                      title="Edit"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(goal._id)}
+                      className="btn btn-ghost p-2 text-red-600 hover:bg-red-50"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
               
               <div className="flex items-center gap-6 text-sm text-dark-600">
@@ -141,13 +237,15 @@ export default function Goals() {
         )}
       </div>
 
-      {/* Create Goal Modal */}
+      {/* Create/Edit Goal Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-dark-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-dark-900">Create New Goal</h2>
-              <button onClick={() => setShowModal(false)} className="btn btn-ghost p-2">
+              <h2 className="text-2xl font-bold text-dark-900">
+                {editingGoal ? 'Edit Goal' : 'Create New Goal'}
+              </h2>
+              <button onClick={handleCloseModal} className="btn btn-ghost p-2">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -255,7 +353,7 @@ export default function Goals() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-dark-700 mb-2">
-                    Initial Progress (%)
+                    Progress (%)
                   </label>
                   <input
                     type="number"
@@ -281,19 +379,32 @@ export default function Goals() {
                     <option value="not-started">Not Started</option>
                     <option value="in-progress">In Progress</option>
                     <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
                 </div>
               </div>
+
+              {/* Assignment - Only for Supervisors */}
+              {['professor', 'admin'].includes(currentUser?.role) && (
+                <div className="border-t border-dark-200 pt-5">
+                  <UserSelector
+                    selectedUsers={formData.assignedTo}
+                    onChange={(users) => setFormData(prev => ({ ...prev, assignedTo: users }))}
+                    multiple={true}
+                    label="Assign Goal to Students"
+                  />
+                </div>
+              )}
 
               {/* Buttons */}
               <div className="flex gap-3 pt-4">
                 <button type="submit" className="btn btn-primary flex-1">
                   <Target className="w-5 h-5" />
-                  Create Goal
+                  {editingGoal ? 'Update Goal' : 'Create Goal'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={handleCloseModal}
                   className="btn btn-secondary"
                 >
                   Cancel

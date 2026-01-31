@@ -1,15 +1,15 @@
 import Goal from '../models/Goal.model.js';
 import Activity from '../models/Activity.model.js';
 
-// @desc    Get all goals for current user
+// @desc    Get all goals (collaborative - shows ALL users' goals)
 // @route   GET /api/goals
 // @access  Private
 export const getGoals = async (req, res) => {
   try {
     const { type, status, startDate, endDate } = req.query;
-    
-    let query = { user: req.user.id };
-    
+
+    let query = {};  // No user filter - show ALL goals from ALL users
+
     if (type) query.type = type;
     if (status) query.status = status;
     if (startDate || endDate) {
@@ -18,7 +18,11 @@ export const getGoals = async (req, res) => {
       if (endDate) query.startDate.$lte = new Date(endDate);
     }
 
-    const goals = await Goal.find(query).sort({ createdAt: -1 });
+    const goals = await Goal.find(query)
+      .populate('user', 'name email role')  // Show who created each goal
+      .populate('assignedBy', 'name email role')  // Show who assigned it
+      .populate('assignedTo', 'name email role')  // Show who it's assigned to
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -58,7 +62,16 @@ export const getGoal = async (req, res) => {
 export const createGoal = async (req, res) => {
   try {
     req.body.user = req.user.id;
+
+    // If supervisor is creating and assigning to others
+    if (req.body.assignedTo && req.body.assignedTo.length > 0) {
+      req.body.assignedBy = req.user.id;
+    }
+
     const goal = await Goal.create(req.body);
+
+    // Populate the goal to get full user details
+    await goal.populate('user assignedBy assignedTo');
 
     // Create activity log
     await Activity.create({
@@ -102,6 +115,17 @@ export const updateGoal = async (req, res) => {
       runValidators: true
     });
 
+    // Create activity log
+    const action = req.body.status === 'completed' ? 'Completed goal' : 'Updated goal';
+    await Activity.create({
+      user: req.user.id,
+      type: 'goal',
+      action: action,
+      description: goal.title,
+      relatedId: goal._id,
+      relatedModel: 'Goal'
+    });
+
     res.json({ success: true, data: goal });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -123,7 +147,17 @@ export const deleteGoal = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
+    const goalTitle = goal.title;
     await goal.deleteOne();
+
+    // Create activity log
+    await Activity.create({
+      user: req.user.id,
+      type: 'goal',
+      action: 'Deleted goal',
+      description: goalTitle,
+      relatedModel: 'Goal'
+    });
 
     res.json({ success: true, data: {} });
   } catch (error) {

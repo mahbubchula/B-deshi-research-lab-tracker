@@ -6,6 +6,14 @@ const goalSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  assignedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  assignedTo: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
   title: {
     type: String,
     required: [true, 'Goal title is required'],

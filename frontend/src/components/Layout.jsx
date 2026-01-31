@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Target, FileText, CheckSquare, User, LogOut, FlaskConical, Bell } from 'lucide-react';
+import { LayoutDashboard, Target, FileText, CheckSquare, User, LogOut, FlaskConical, Bell, ListTodo } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
 
@@ -13,7 +13,18 @@ export default function Layout() {
     navigate('/login');
   };
 
-  const navigation = [
+  // Navigation based on user role
+  const isSupervisor = user?.role === 'professor' || user?.role === 'admin';
+
+  const navigation = isSupervisor ? [
+    { name: 'Supervisor Dashboard', to: '/supervisor/dashboard', icon: LayoutDashboard },
+    { name: 'Students', to: '/supervisor/students', icon: User },
+    { name: 'My Personal To-Dos', to: '/supervisor/todos', icon: ListTodo },
+    { name: 'My Dashboard', to: '/', icon: LayoutDashboard },
+    { name: 'Goals', to: '/goals', icon: Target },
+    { name: 'Papers', to: '/papers', icon: FileText },
+    { name: 'Tasks', to: '/tasks', icon: CheckSquare },
+  ] : [
     { name: 'Dashboard', to: '/', icon: LayoutDashboard },
     { name: 'Goals', to: '/goals', icon: Target },
     { name: 'Papers', to: '/papers', icon: FileText },

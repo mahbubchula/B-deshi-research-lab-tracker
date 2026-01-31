@@ -12,6 +12,8 @@ import paperRoutes from './src/routes/paper.routes.js';
 import taskRoutes from './src/routes/task.routes.js';
 import activityRoutes from './src/routes/activity.routes.js';
 import notificationRoutes from './src/routes/notification.routes.js';
+import dashboardRoutes from './src/routes/dashboard.routes.js';
+import personalTodoRoutes from './src/routes/personalTodo.routes.js';
 
 dotenv.config();
 
@@ -35,11 +37,13 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/goals', goalRoutes);
 app.use('/api/papers', paperRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/personal-todos', personalTodoRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

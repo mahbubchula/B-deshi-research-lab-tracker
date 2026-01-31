@@ -70,9 +70,44 @@ export const taskAPI = {
 
 export const activityAPI = {
   getAll: (params) => api.get('/activities', { params }),
+  delete: (id) => api.delete(`/activities/${id}`),
 };
 
 export const notificationAPI = {
   getAll: () => api.get('/notifications'),
   markAsRead: (id) => api.put(`/notifications/${id}/read`),
+};
+
+// Supervisor/User management API
+export const userAPI = {
+  getAll: (params) => api.get('/users', { params }),
+  getOne: (id) => api.get(`/users/${id}`),
+  update: (id, data) => api.put(`/users/${id}`, data),
+  delete: (id) => api.delete(`/users/${id}`),
+  assignSupervisor: (id, supervisorId) => api.put(`/users/${id}/assign-supervisor`, { supervisorId }),
+  getUserGoals: (id) => api.get(`/users/${id}/goals`),
+  getUserPapers: (id) => api.get(`/users/${id}/papers`),
+  getUserTasks: (id) => api.get(`/users/${id}/tasks`),
+};
+
+// Dashboard API
+export const dashboardAPI = {
+  getShared: () => api.get('/dashboard'),  // Collaborative dashboard - ALL users' data
+  getPersonal: () => api.get('/dashboard/personal'),  // Personal dashboard - own data only
+};
+
+// Supervisor dashboard API
+export const supervisorAPI = {
+  getDashboard: () => api.get('/users/supervisor/dashboard'),
+  getAllActivities: (params) => api.get('/users/supervisor/activities', { params }),
+};
+
+// Personal To-Do API (Supervisor only)
+export const personalTodoAPI = {
+  getAll: (params) => api.get('/personal-todos', { params }),
+  getOne: (id) => api.get(`/personal-todos/${id}`),
+  create: (data) => api.post('/personal-todos', data),
+  update: (id, data) => api.put(`/personal-todos/${id}`, data),
+  delete: (id) => api.delete(`/personal-todos/${id}`),
+  getStats: () => api.get('/personal-todos/stats'),
 };

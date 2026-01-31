@@ -4,6 +4,7 @@ import { Target, FileText, CheckSquare, TrendingUp, Calendar, Clock } from 'luci
 import { goalAPI, taskAPI, paperAPI, activityAPI } from '../services/api';
 import { format } from 'date-fns';
 import useAuthStore from '../store/authStore';
+import toast from 'react-hot-toast';
 
 export default function Dashboard() {
   const { user } = useAuthStore();
@@ -22,12 +23,33 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     try {
+      console.log('Fetching dashboard data...');
+
       const [goalsRes, tasksRes, papersRes, activitiesRes] = await Promise.all([
-        goalAPI.getAll().catch(() => ({ data: { data: [] } })),
-        taskAPI.getAll().catch(() => ({ data: { data: [] } })),
-        paperAPI.getAll().catch(() => ({ data: { data: [] } })),
-        activityAPI.getAll().catch(() => ({ data: { data: [] } }))
+        goalAPI.getAll().catch((err) => {
+          console.error('Goals fetch error:', err);
+          return { data: { data: [], count: 0 } };
+        }),
+        taskAPI.getAll().catch((err) => {
+          console.error('Tasks fetch error:', err);
+          return { data: { data: [], count: 0 } };
+        }),
+        paperAPI.getAll().catch((err) => {
+          console.error('Papers fetch error:', err);
+          return { data: { data: [], count: 0 } };
+        }),
+        activityAPI.getAll().catch((err) => {
+          console.error('Activities fetch error:', err);
+          return { data: { data: [], count: 0 } };
+        })
       ]);
+
+      console.log('API Responses:', {
+        goals: goalsRes.data,
+        tasks: tasksRes.data,
+        papers: papersRes.data,
+        activities: activitiesRes.data
+      });
 
       // Calculate goal stats
       const goals = goalsRes.data.data || [];
@@ -53,6 +75,8 @@ export default function Dashboard() {
         accepted: papers.filter(p => ['accepted', 'published'].includes(p.status)).length
       };
 
+      console.log('Calculated stats:', { goalStats, taskStats, paperStats });
+
       setStats({
         goals: goalStats,
         tasks: taskStats,
@@ -62,6 +86,7 @@ export default function Dashboard() {
       setActivities(activitiesRes.data.data || []);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+      toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }

@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Plus, CheckSquare, X, Calendar, AlertCircle, Clock } from 'lucide-react';
+import { Plus, CheckSquare, X, Calendar, AlertCircle, Clock, Edit2, Trash2, User, UserCheck } from 'lucide-react';
 import { taskAPI } from '../services/api';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import useAuthStore from '../store/authStore';
+import UserSelector from '../components/UserSelector';
 
 export default function Tasks() {
   const { user } = useAuthStore();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
   const [filter, setFilter] = useState('all');
   const [formData, setFormData] = useState({
     title: '',
@@ -17,7 +19,8 @@ export default function Tasks() {
     priority: 'medium',
     dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     status: 'pending',
-    estimatedHours: ''
+    estimatedHours: '',
+    assignedTo: []
   });
 
   useEffect(() => {
@@ -46,16 +49,50 @@ export default function Tasks() {
     try {
       const submitData = {
         ...formData,
-        assignedTo: user._id,
+        // If supervisor assigns to specific users, use those; otherwise assign to self
+        assignedTo: formData.assignedTo.length > 0 ? formData.assignedTo[0] : user._id,
         estimatedHours: formData.estimatedHours ? parseFloat(formData.estimatedHours) : undefined
       };
-      await taskAPI.create(submitData);
-      toast.success('Task created successfully!');
+
+      if (editingTask) {
+        await taskAPI.update(editingTask._id, submitData);
+        toast.success('Task updated successfully!');
+      } else {
+        await taskAPI.create(submitData);
+        toast.success('Task created successfully!');
+      }
       setShowModal(false);
+      setEditingTask(null);
       resetForm();
       fetchTasks();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to create task');
+      toast.error(error.response?.data?.message || 'Operation failed');
+    }
+  };
+
+  const handleEdit = (task) => {
+    setEditingTask(task);
+    setFormData({
+      title: task.title,
+      description: task.description || '',
+      priority: task.priority,
+      dueDate: task.dueDate.split('T')[0],
+      status: task.status,
+      estimatedHours: task.estimatedHours || '',
+      assignedTo: task.assignedTo?._id ? [task.assignedTo._id] : []
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this task?')) return;
+    
+    try {
+      await taskAPI.delete(id);
+      toast.success('Task deleted successfully!');
+      fetchTasks();
+    } catch (error) {
+      toast.error('Failed to delete task');
     }
   };
 
@@ -76,8 +113,15 @@ export default function Tasks() {
       priority: 'medium',
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       status: 'pending',
-      estimatedHours: ''
+      estimatedHours: '',
+      assignedTo: []
     });
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingTask(null);
+    resetForm();
   };
 
   const statusColors = {
@@ -95,18 +139,18 @@ export default function Tasks() {
     'urgent': 'bg-red-100 text-red-800'
   };
 
-  const isOverdue = (dueDate) => {
-    return new Date(dueDate) < new Date() && formData.status !== 'completed';
+  const isOverdue = (dueDate, status) => {
+    return new Date(dueDate) < new Date() && status !== 'completed';
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-dark-900">Tasks</h1>
-          <p className="text-dark-600 mt-1">Manage your assignments and deadlines</p>
+          <h1 className="text-3xl font-bold text-dark-900">Team Tasks</h1>
+          <p className="text-dark-600 mt-1">✅ Collaborative view - See all team members' tasks</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn btn-primary">
+        <button onClick={() => { setEditingTask(null); setShowModal(true); }} className="btn btn-primary">
           <Plus className="w-5 h-5" />
           New Task
         </button>
@@ -150,19 +194,33 @@ export default function Tasks() {
                   {task.description && (
                     <p className="text-dark-600 text-sm mb-3">{task.description}</p>
                   )}
-                  
+
                   <div className="flex flex-wrap items-center gap-4 text-sm text-dark-600">
+                    {task.assignedTo && (
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="w-4 h-4" />
+                        <span>Assigned to: <span className="font-medium text-dark-700">{task.assignedTo?.name || 'Unknown'}</span></span>
+                      </div>
+                    )}
+
+                    {task.assignedBy && (
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4" />
+                        <span>Created by: <span className="font-medium text-dark-700">{task.assignedBy?.name || 'Unknown'}</span></span>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4" />
                       <span>Due: {format(new Date(task.dueDate), 'MMM d, yyyy')}</span>
-                      {isOverdue(task.dueDate) && (
+                      {isOverdue(task.dueDate, task.status) && (
                         <span className="text-red-600 flex items-center gap-1">
                           <AlertCircle className="w-4 h-4" />
                           Overdue
                         </span>
                       )}
                     </div>
-                    
+
                     {task.estimatedHours && (
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4" />
@@ -172,19 +230,37 @@ export default function Tasks() {
                   </div>
                 </div>
 
-                {/* Quick Status Update */}
-                {task.status !== 'completed' && task.status !== 'cancelled' && (
-                  <div className="ml-4">
-                    <select
-                      value={task.status}
-                      onChange={(e) => handleStatusChange(task._id, e.target.value)}
-                      className="input text-sm py-1"
+                {/* Action Buttons - only show if user is assigned to task, created it, or is supervisor */}
+                {(task.assignedTo?._id === user?.id ||
+                  task.assignedBy?._id === user?.id ||
+                  ['professor', 'admin'].includes(user?.role)) && (
+                  <div className="flex gap-2 ml-4">
+                    {task.status !== 'completed' && task.status !== 'cancelled' && (
+                      <select
+                        value={task.status}
+                        onChange={(e) => handleStatusChange(task._id, e.target.value)}
+                        className="input text-sm py-1 px-2"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="review">Review</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    )}
+                    <button
+                      onClick={() => handleEdit(task)}
+                      className="btn btn-ghost p-2 text-blue-600 hover:bg-blue-50"
+                      title="Edit"
                     >
-                      <option value="pending">Pending</option>
-                      <option value="in-progress">In Progress</option>
-                      <option value="review">Review</option>
-                      <option value="completed">Completed</option>
-                    </select>
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(task._id)}
+                      className="btn btn-ghost p-2 text-red-600 hover:bg-red-50"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 )}
               </div>
@@ -199,13 +275,15 @@ export default function Tasks() {
         )}
       </div>
 
-      {/* Create Task Modal */}
+      {/* Create/Edit Task Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-dark-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-dark-900">Create New Task</h2>
-              <button onClick={() => { setShowModal(false); resetForm(); }} className="btn btn-ghost p-2">
+              <h2 className="text-2xl font-bold text-dark-900">
+                {editingTask ? 'Edit Task' : 'Create New Task'}
+              </h2>
+              <button onClick={handleCloseModal} className="btn btn-ghost p-2">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -313,15 +391,27 @@ export default function Tasks() {
                 </div>
               </div>
 
+              {/* Assignment - Only for Supervisors */}
+              {['professor', 'admin'].includes(user?.role) && (
+                <div className="border-t border-dark-200 pt-5">
+                  <UserSelector
+                    selectedUsers={formData.assignedTo}
+                    onChange={(users) => setFormData(prev => ({ ...prev, assignedTo: users }))}
+                    multiple={false}
+                    label="Assign Task to Student"
+                  />
+                </div>
+              )}
+
               {/* Buttons */}
               <div className="flex gap-3 pt-4">
                 <button type="submit" className="btn btn-primary flex-1">
                   <CheckSquare className="w-5 h-5" />
-                  Create Task
+                  {editingTask ? 'Update Task' : 'Create Task'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowModal(false); resetForm(); }}
+                  onClick={handleCloseModal}
                   className="btn btn-secondary"
                 >
                   Cancel

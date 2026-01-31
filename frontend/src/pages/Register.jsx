@@ -68,6 +68,38 @@ export default function Register() {
               {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>}
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-dark-700 mb-2">Role</label>
+              <select
+                {...register('role', { required: 'Role is required' })}
+                className="input"
+              >
+                <option value="">Select your role</option>
+                <option value="student">Student</option>
+                <option value="professor">Professor/Supervisor</option>
+                <option value="admin">Admin</option>
+              </select>
+              {errors.role && <p className="mt-1 text-sm text-red-600">{errors.role.message}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-dark-700 mb-2">Department (Optional)</label>
+              <input
+                {...register('department')}
+                className="input"
+                placeholder="e.g., Computer Science"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-dark-700 mb-2">Lab Group (Optional)</label>
+              <input
+                {...register('labGroup')}
+                className="input"
+                placeholder="e.g., AI Research Lab"
+              />
+            </div>
+
             <button type="submit" disabled={loading} className="btn btn-primary w-full">
               {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 
               <><UserPlus className="w-5 h-5" />Register</>}
